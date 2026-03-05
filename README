@@ -1,0 +1,63 @@
+# Distributed Key-Value Store (C++23)
+
+A high-performance, distributed key-value storage system built with **modern C++**, focusing on low-latency networking, asynchronous I/O, and efficient data persistence. This project demonstrates core systems programming concepts used in infrastructure-critical applications.
+
+## 🚀 Key Features
+
+* **Asynchronous Networking:** Built using `Asio` (standalone) for non-blocking I/O multiplexing and scalable TCP connections.
+* **Modern C++ Standards:** Leveraging C++20/23 features like `std::jthread`, `std::span`, and concepts for memory safety and performance.
+* **Efficient Serialization:** Uses **Protocol Buffers (Protobuf)** for structured, high-speed binary communication between client and server.
+* **Thread-Safe Engine:** In-memory storage designed with fine-grained concurrency control to maximize throughput.
+* **Dockerized Environment:** Fully containerized setup to ensure consistent builds and deployment across Linux environments.
+
+## 🛠️ Tech Stack
+
+* **Language:** C++20/23 (GCC 12+)
+* **Build System:** CMake 3.10+
+* **Networking:** Asio (Standalone)
+* **Serialization:** Google Protocol Buffers
+* **Testing:** GoogleTest (GTest)
+* **Containerization:** Docker & Docker Compose
+
+## 🏗️ Architecture Overview
+
+The system is designed with a modular approach to separate concerns:
+1.  **Network Layer:** Handles raw TCP streams, connection lifecycles, and asynchronous event loops.
+2.  **Protocol Layer:** Responsible for framing and deserializing Protobuf messages into internal commands.
+3.  **Storage Engine:** A thread-safe, key-value map with support for basic CRUD operations and future WAL (Write-Ahead Logging) persistence.
+
+## 🚦 Getting Started
+
+### Prerequisites
+
+Ensure you have the following dependencies installed (Ubuntu/Debian example):
+
+```bash
+sudo apt update
+sudo apt install cmake g++ libasio-dev protobuf-compiler libprotobuf-dev libgtest-dev
+```
+
+### Build Instructions
+
+# Clone the repository
+git clone git@github.com:VDA97/kv-store-distributed.git
+cd kv-store-distributed
+
+# Create build directory and compile
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+
+📈 Roadmap
+[ ] Basic TCP Server/Client handshake using Asio.
+
+[ ] Protobuf message definition for GET/SET/DELETE.
+
+[ ] In-memory Hash Table with Mutex protection.
+
+[ ] Support for multiple concurrent client connections.
+
+[ ] Implementation of Write-Ahead Logging (WAL) for data persistence.
+
+Developed by Victor Almeida
+
