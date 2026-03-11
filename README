@@ -48,6 +48,11 @@ mkdir build && cd build
 cmake ..
 make -j$(nproc)
 
+# Run server and client 
+cd ~/kv-store-distributed/build
+./server_app
+./client_cli
+
 📈 Roadmap
 [ ] Basic TCP Server/Client handshake using Asio.
 

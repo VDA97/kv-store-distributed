@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package kv_store.network;
+
+// The main message type for all communications
+message KVRequest {
+    enum CommandType {
+        GET = 0;
+        SET = 1;
+        DELETE = 2;
+    }
+
+    CommandType type = 1;
+    string key = 2;
+    string value = 3; // Empty for GET and DELETE
+}
+
+message KVResponse {
+    bool success = 1;
+    string message = 2;
+    string value = 3; // Only filled for GET requests
+}
