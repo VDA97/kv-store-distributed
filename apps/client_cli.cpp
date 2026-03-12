@@ -1,67 +1,72 @@
 #include <utility>
 #include <asio.hpp>
 #include "utils/logger.hpp"
-#include "message.pb.h" // Incluir o header gerado
+#include "message.pb.h"
 
 using asio::ip::tcp;
 
-int main()
-{
+// Função auxiliar para não repetir código de envio/recebimento
+void send_request(tcp::socket& socket, const kv_store::network::KVRequest& req) {
+    std::string serialized;
+    req.SerializeToString(&serialized);
+    serialized += "\n";
+    asio::write(socket, asio::buffer(serialized));
+}
+
+int main() {
     kv_store::utils::init_logging();
+    asio::io_context io_context;
+    tcp::resolver resolver(io_context);
+    auto endpoints = resolver.resolve("127.0.0.1", "8080");
 
-    try
-    {
-        asio::io_context io_context;
-        tcp::resolver resolver(io_context);
-        auto endpoints = resolver.resolve("127.0.0.1", "8080");
-
-        tcp::socket socket(io_context);
-        asio::connect(socket, endpoints);
-
-        LOG_INFO("Successfully connected to the server!");
-
-        // 1. Create a SET request
-        kv_store::network::KVRequest request;
-        request.set_type(kv_store::network::KVRequest::SET);
-        request.set_key("meu_nome");
-        request.set_value("Victor Almeida");
-
-        // 2. Serialize and send to server
-        std::string serialized_request;
-        request.SerializeToString(&serialized_request);
-        serialized_request += "\n"; // Delimiter for our simple protocol
+    try {
+        // --- PASSO 1: ENVIAR O SET ---
+        tcp::socket socket1(io_context);
+        asio::connect(socket1, endpoints);
         
-        asio::write(socket, asio::buffer(serialized_request));
-        LOG_INFO("Request sent: SET meu_nome='Victor Almeida'");
+        kv_store::network::KVRequest set_req;
+        set_req.set_type(kv_store::network::KVRequest::SET);
+        set_req.set_key("meu_nome");
+        set_req.set_value("Victor Almeida");
         
-        // 1. Read the raw binary data until the newline
-        asio::streambuf receive_buffer;
-        asio::read_until(socket, receive_buffer, '\n');
+        send_request(socket1, set_req);
+        LOG_INFO("SET Request sent.");
 
-        // 2. Extract the data from the buffer to a string
+        // Lendo resposta do SET
+        asio::streambuf buf1;
+        asio::read_until(socket1, buf1, '\n');
+        socket1.close(); // Servidor fecha, nós fechamos aqui também.
+
+        // --- PASSO 2: ENVIAR O GET (Nova Conexão) ---
+        tcp::socket socket2(io_context);
+        asio::connect(socket2, endpoints);
+
+        kv_store::network::KVRequest get_req;
+        get_req.set_type(kv_store::network::KVRequest::GET);
+        get_req.set_key("meu_nome");
+
+        send_request(socket2, get_req);
+        LOG_INFO("GET Request sent for key 'meu_nome'");
+
+        // Lendo resposta do GET
+        asio::streambuf buf2;
+        asio::read_until(socket2, buf2, '\n');
+        
         std::string raw_data;
-        std::istream is(&receive_buffer);
+        std::istream is(&buf2);
         std::getline(is, raw_data);
 
-        // 3. Parse the binary data into a Protobuf object
         kv_store::network::KVResponse response;
-        if (response.ParseFromString(raw_data))
-        {
-            // 4. Now we can access the fields professionally!
-            LOG_INFO("--- Response Received ---");
+        if (response.ParseFromString(raw_data)) {
+            LOG_INFO("--- Response for GET ---");
             LOG_INFO("Success: {}", response.success());
             LOG_INFO("Message: {}", response.message());
-            LOG_INFO("Value:   {}", response.value());
+            LOG_INFO("Value:   {}", response.value()); // AQUI DEVE APARECER SEU NOME!
             LOG_INFO("-------------------------");
         }
-        else
-        {
-            LOG_ERROR("Failed to parse Protobuf message!");
-        }
     }
-    catch (const std::exception &e)
-    {
-        LOG_ERROR("Client error: {}", e.what());
+    catch (std::exception& e) {
+        LOG_ERROR("Error: {}", e.what());
     }
 
     return 0;

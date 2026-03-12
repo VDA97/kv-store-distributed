@@ -9,8 +9,20 @@ using asio::ip::tcp;
 int main()
 {
     kv_store::utils::init_logging();
-    // The core of our database
+
     kv_store::storage::HashTable storage;
+
+    // 1. CARREGAR DADOS EXISTENTES AO INICIAR
+    // O ficheiro será criado na pasta onde executas o binário
+    const std::string dump_file = "storage_dump.kv";
+    if (storage.load_from_file(dump_file))
+    {
+        LOG_INFO("Database recovery successful. Data loaded from {}", dump_file);
+    }
+    else
+    {
+        LOG_INFO("No previous storage data found. Starting with an empty database.");
+    }
 
     try
     {
@@ -18,18 +30,12 @@ int main()
         tcp::acceptor acceptor(io_context, tcp::endpoint(tcp::v4(), 8080));
 
         LOG_INFO("KV-Store server running on port 8080...");
-        LOG_INFO("Awaiting client connections...");
 
         for (;;)
         {
             tcp::socket socket(io_context);
             acceptor.accept(socket);
 
-            LOG_INFO("Client connected: {}", socket.remote_endpoint().address().to_string());
-
-            // Professional Tip: Ensure the message matches the size the client expects
-            // "Welcome to KV-Store Distributed!" has 33 chars + \n = 34 bytes
-            // std::string msg = "Welcome to KV-Store Distributed!\n";
             asio::streambuf receive_buffer;
             asio::read_until(socket, receive_buffer, '\n');
 
@@ -40,36 +46,43 @@ int main()
             kv_store::network::KVRequest request;
             if (request.ParseFromString(raw_request))
             {
+                kv_store::network::KVResponse resp;
+
                 if (request.type() == kv_store::network::KVRequest::SET)
                 {
                     storage.set(request.key(), request.value());
 
-                    // Respond success
-                    kv_store::network::KVResponse resp;
+                    // 2. PERSISTÊNCIA IMEDIATA
+                    // Salva em disco sempre que houver uma alteração
+                    storage.save_to_file(dump_file);
+
                     resp.set_success(true);
-                    resp.set_message("Key stored successfully");
-
-                    std::string out;
-                    resp.SerializeToString(&out);
-                    out += "\n";
-                    asio::error_code ec;
-                    asio::write(socket, asio::buffer(out), ec);
-
-                    if (ec)
+                    resp.set_message("Key stored and persisted to disk");
+                    LOG_INFO("Operation: SET key='{}' (Persisted)", request.key());
+                }
+                else if (request.type() == kv_store::network::KVRequest::GET)
+                {
+                    auto val = storage.get(request.key());
+                    if (val)
                     {
-                        LOG_ERROR("Failed to send message: {}", ec.message());
+                        resp.set_success(true);
+                        resp.set_value(*val);
+                        resp.set_message("Key found");
                     }
                     else
                     {
-                        LOG_DEBUG("Greeting sent successfully.");
+                        resp.set_success(false);
+                        resp.set_message("Key not found");
                     }
+                    LOG_INFO("Operation: GET key='{}'", request.key());
                 }
+
+                // Envio da resposta...
+                std::string out;
+                resp.SerializeToString(&out);
+                out += "\n";
+                asio::write(socket, asio::buffer(out));
             }
-
-
-            // The socket will close here when going out of scope.
-            // For now it's fine, but in the future we will keep it alive
-            // to process multiple commands (SET/GET).
         }
     }
     catch (const std::exception &e)
