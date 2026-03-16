@@ -59,8 +59,6 @@ void Session::handle_request(const std::string &raw_data)
     if (request.type() == KVRequest::SET)
     {
         storage_.set(request.key(), request.value());
-        storage_.save_to_file(dump_file_);
-
         response.set_success(true);
         response.set_message("Key stored successfully (Async)");
         LOG_INFO("Async SET: key={}", request.key());
