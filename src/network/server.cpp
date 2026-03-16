@@ -1,6 +1,7 @@
 #include "network/server.hpp"
 #include "network/session.hpp" // Precisaremos desse novo arquivo
 #include "utils/logger.hpp"
+#include "utils/metrics.hpp"
 
 namespace kv_store::network
 {
@@ -21,6 +22,12 @@ void Server::start_periodic_save()
     timer_.async_wait([this](const std::error_code &ec)
                       {
         if (!ec) {
+            LOG_INFO("--- SYSTEM METRICS ---");
+            LOG_INFO("Active Connections: {}", utils::Metrics::active_connections.load());
+            LOG_INFO("Total Requests: {}", utils::Metrics::total_requests.load());
+            LOG_INFO("SET Operations: {}", utils::Metrics::total_set_ops.load());
+            LOG_INFO("GET Operations: {}", utils::Metrics::total_get_ops.load());
+            LOG_INFO("----------------------");
             // SÓ SALVA SE HOUVE ALTERAÇÃO
             if (storage_.needs_save()) {
                 LOG_INFO("Periodic Save: Changes detected. Saving snapshot...");

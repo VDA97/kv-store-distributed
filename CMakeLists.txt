@@ -22,6 +22,7 @@ add_library(kv_store_core STATIC
     src/storage/hash_table.cpp
     src/network/server.cpp
     src/network/session.cpp
+    src/utils/metrics.cpp
     ${PROTO_SRCS}
 )
 

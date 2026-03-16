@@ -1,5 +1,6 @@
 #include "network/session.hpp"
 #include "utils/logger.hpp"
+#include "utils/metrics.hpp"
 #include "message.pb.h"
 #include <sstream>
 
@@ -9,8 +10,14 @@ namespace kv_store::network
 Session::Session(tcp::socket socket, storage::HashTable &storage, const std::string &dump_file)
     : socket_(std::move(socket)), storage_(storage), dump_file_(dump_file) {}
 
+Session::~Session()
+{
+    kv_store::utils::Metrics::active_connections--;
+}
+
 void Session::start()
 {
+    kv_store::utils::Metrics::active_connections++;
     do_read();
 }
 
@@ -54,10 +61,12 @@ void Session::handle_request(const std::string &raw_data)
         LOG_ERROR("Failed to parse Protobuf request. Size received: {}", raw_data.size());
         return;
     }
+    kv_store::utils::Metrics::total_requests++;
 
     // 3. Processamento do Comando
     if (request.type() == KVRequest::SET)
     {
+        kv_store::utils::Metrics::total_set_ops++;
         storage_.set(request.key(), request.value());
         response.set_success(true);
         response.set_message("Key stored successfully (Async)");
@@ -65,6 +74,7 @@ void Session::handle_request(const std::string &raw_data)
     }
     else if (request.type() == KVRequest::GET)
     {
+        kv_store::utils::Metrics::total_get_ops++;
         // Usando a lógica de std::optional da sua HashTable.hpp
         auto result = storage_.get(request.key());
 
