@@ -67,7 +67,7 @@ void Session::handle_request(const std::string &raw_data)
     if (request.type() == KVRequest::SET)
     {
         kv_store::utils::Metrics::total_set_ops++;
-        storage_.set(request.key(), request.value());
+        storage_.set(request.key(), request.value(), request.ttl_seconds());
         response.set_success(true);
         response.set_message("Key stored successfully (Async)");
         LOG_INFO("Async SET: key={}", request.key());
