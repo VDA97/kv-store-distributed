@@ -140,6 +140,29 @@ namespace kv_store::storage
         return true;
     }
 
+    size_t HashTable::cleanup_expired_keys()
+    {
+        std::unique_lock lock(mutex_);
+        int64_t now = get_current_time_ms();
+        size_t initial_size = data_.size();
+
+        // No C++20, isso substitui todo aquele loop de while/erase(it++)
+        std::erase_if(data_, [now](const auto &item)
+                      {
+        const auto& [key, entry] = item;
+        return entry.expires_at > 0 && now > entry.expires_at; });
+
+        size_t removed = initial_size - data_.size();
+
+        if (removed > 0)
+        {
+            is_dirty_ = true; // Avisa que a RAM mudou e o disco precisa atualizar
+            LOG_INFO("Cleanup: Removed {} expired keys from memory using C++20 erase_if", removed);
+        }
+
+        return removed;
+    }
+
     bool HashTable::needs_save() const { return is_dirty_; }
     void HashTable::reset_dirty() { is_dirty_ = false; }
 

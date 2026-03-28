@@ -33,6 +33,7 @@ namespace kv_store::storage
 
         bool needs_save() const;
         void reset_dirty();
+        size_t cleanup_expired_keys();
 
     private:
         // O mapa agora guarda a struct TableEntry em vez de apenas std::string
