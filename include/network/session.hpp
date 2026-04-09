@@ -5,6 +5,7 @@
 #include <vector>
 #include "storage/hash_table.hpp"
 #include "message.pb.h"
+#include "server.hpp"
 
 namespace kv_store::network
 {
@@ -13,7 +14,7 @@ namespace kv_store::network
 class Session : public std::enable_shared_from_this<Session>
 {
 public:
-    Session(tcp::socket socket, storage::HashTable &storage, const std::string &dump_file);
+    Session(tcp::socket socket, storage::HashTable &storage, const std::string &dump_file, ReplicationConfig config);
     ~Session();
     void start();
 
@@ -21,6 +22,7 @@ private:
     void do_read();
     void handle_request(const std::string &raw_data);
     void do_write(const std::string &response_data);
+    void replicate_to_all_followers(const KVRequest &request);
 
     tcp::socket socket_;
     storage::HashTable &storage_;
@@ -34,6 +36,8 @@ private:
     // Isso garante que o buffer passado para async_write continue vivo
     // até que o callback de conclusão seja chamado.
     std::string write_buffer_;
+
+    ReplicationConfig config_;
 };
 
 } // namespace kv_store::network

@@ -7,8 +7,8 @@
 namespace kv_store::network
 {
 
-Session::Session(tcp::socket socket, storage::HashTable &storage, const std::string &dump_file)
-    : socket_(std::move(socket)), storage_(storage), dump_file_(dump_file) {}
+Session::Session(tcp::socket socket, storage::HashTable &storage, const std::string &dump_file, ReplicationConfig config)
+    : socket_(std::move(socket)), storage_(storage), dump_file_(dump_file), config_(config) {}
 
 Session::~Session()
 {
@@ -68,6 +68,17 @@ void Session::handle_request(const std::string &raw_data)
     {
         kv_store::utils::Metrics::total_set_ops++;
         storage_.set(request.key(), request.value(), request.ttl_seconds());
+
+        if (config_.mode == ServerMode::LEADER)
+        {
+            LOG_INFO("Leader Mode: Replicating '{}' to {} followers",
+                     request.key(), config_.followers.size());
+            replicate_to_all_followers(request);
+        }
+        else
+        {
+            LOG_INFO("Follower Mode: Received replicated data for '{}'", request.key());
+        }
         response.set_success(true);
         response.set_message("Key stored successfully (Async)");
         LOG_INFO("Async SET: key={}", request.key());
@@ -122,6 +133,55 @@ void Session::do_write(const std::string &response_data)
                               LOG_ERROR("Write error: {}", ec.message());
                           }
                       });
+}
+
+void Session::replicate_to_all_followers(const KVRequest &request)
+{
+    std::string serialized_payload;
+    if (!request.SerializeToString(&serialized_payload))
+    {
+        LOG_ERROR("Failed to serialize request for replication");
+        return;
+    }
+    serialized_payload += "\n";
+
+    auto self = shared_from_this();
+
+    for (const auto &[host, port] : config_.followers)
+    {
+        auto replication_socket = std::make_shared<tcp::socket>(socket_.get_executor());
+        tcp::resolver resolver(socket_.get_executor());
+        auto endpoints = resolver.resolve(host, std::to_string(port));
+
+        // 1. Primeiro conectamos
+        asio::async_connect(*replication_socket, endpoints,
+                            [self, replication_socket, serialized_payload, host, port](std::error_code ec, tcp::endpoint)
+                            {
+                                if (!ec) // Se a conexão deu certo
+                                {
+                                    // 2. AGORA sim chamamos o async_write para enviar o payload
+                                    asio::async_write(*replication_socket, asio::buffer(serialized_payload),
+                                                      [host, port](std::error_code ec_write, std::size_t /*length*/)
+                                                      {
+                                                          // 3. Aqui usamos o nome correto: ec_write
+                                                          if (!ec_write)
+                                                          {
+                                                              LOG_INFO("Successfully replicated to follower {}:{}", host, port);
+                                                          }
+                                                          else
+                                                          {
+                                                              LOG_ERROR("Failed to write to follower {}:{}: {}", host, port, ec_write.message());
+                                                          }
+                                                      });
+                                }
+                                else
+                                {
+                                    LOG_ERROR("Failed to connect to follower {}:{}: {}", host, port, ec.message());
+                                }
+                            });
+
+        LOG_DEBUG("Initiating replication to follower at {}:{}", host, port);
+    }
 }
 
 } // namespace kv

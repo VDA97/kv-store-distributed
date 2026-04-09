@@ -1,41 +1,80 @@
 #include <utility>
-#include <thread>
-#include <vector>
 #include "network/server.hpp"
+#include "network/session.hpp" // Para acessar ReplicationConfig e ServerMode
 #include "storage/hash_table.hpp"
 #include "utils/logger.hpp"
+#include <iostream>
+#include <string>
+#include <thread>
+#include <vector>
 
-int main()
+int main(int argc, char *argv[])
 {
     kv_store::utils::init_logging();
 
-    kv_store::storage::HashTable storage;
+    // 1. Configurações Iniciais
+    uint16_t port = 8080;
+    kv_store::network::ReplicationConfig config;
     const std::string dump_file = "storage_dump.kv";
+
+    // 2. Parser de Argumentos (Integrando com sua necessidade de flexibilidade)
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+        if (arg == "--port" && i + 1 < argc)
+        {
+            port = static_cast<uint16_t>(std::stoi(argv[++i]));
+        }
+        else if (arg == "--mode" && i + 1 < argc)
+        {
+            std::string mode = argv[++i];
+            if (mode == "follower")
+            {
+                config.mode = kv_store::network::ServerMode::FOLLOWER;
+            }
+        }
+        else if (arg == "--add-follower" && i + 1 < argc)
+        {
+            // Exemplo: --add-follower 127.0.0.1:8081
+            std::string target = argv[++i];
+            size_t colon_pos = target.find(':');
+            if (colon_pos != std::string::npos)
+            {
+                std::string host = target.substr(0, colon_pos);
+                uint16_t f_port = static_cast<uint16_t>(std::stoi(target.substr(colon_pos + 1)));
+                config.followers.push_back({host, f_port});
+            }
+        }
+    }
+
+    kv_store::storage::HashTable storage;
     storage.load_from_file(dump_file);
 
     try
     {
-        // 1. Criamos o servidor
-        kv_store::network::Server server(8080, storage, dump_file);
+        // 3. Criamos o servidor com a Configuração de Replicação
+        // Note que agora passamos 'config' para o construtor do Server
+        kv_store::network::Server server(port, storage, dump_file, config);
 
-        // 2. Definimos o número de threads (ex: capacidade do seu processador)
+        std::string mode_str = (config.mode == kv_store::network::ServerMode::LEADER) ? "LEADER" : "FOLLOWER";
+        LOG_INFO("Starting server in {} mode on port {}...", mode_str, port);
+
+        // 4. Pool de Threads (Seu código original preservado)
         unsigned int thread_count = std::thread::hardware_concurrency();
         if (thread_count == 0)
-            thread_count = 2; // Fallback
+            thread_count = 2;
 
-        LOG_INFO("Starting server with {} threads...", thread_count);
+        LOG_INFO("Launching thread pool with {} worker threads...", thread_count);
 
-        // 3. Criamos um pool de threads rodando o servidor
         std::vector<std::thread> threads;
         for (unsigned int i = 0; i < thread_count; ++i)
         {
             threads.emplace_back([&server]()
                                  {
-                                     server.run(); // Cada thread entra no loop de eventos
+                                     server.run(); // O io_context::run() agora é chamado aqui
                                  });
         }
 
-        // 4. Aguardamos as threads (o servidor rodará até ser parado)
         for (auto &t : threads)
         {
             if (t.joinable())

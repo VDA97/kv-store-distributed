@@ -6,12 +6,15 @@
 namespace kv_store::network
 {
 
-Server::Server(short port, storage::HashTable &storage, const std::string &dump_file)
-    : acceptor_(io_context_, tcp::endpoint(tcp::v4(), port)),
+    Server::Server(short port, storage::HashTable &storage, const std::string &dump_file, ReplicationConfig config)
+    :   acceptor_(io_context_, tcp::endpoint(tcp::v4(), port)),
         storage_(storage),
         dump_file_(dump_file),
-        timer_(io_context_)
+        timer_(io_context_),
+        config_(config)
 {
+    LOG_INFO("Server initialized on port {} in {} mode.", port,
+             (config_.mode == ServerMode::LEADER ? "LEADER" : "FOLLOWER"));
     start_periodic_save();
     do_accept(); // Inicia o primeiro "escritor" de aceitação
 }
@@ -56,7 +59,7 @@ void Server::do_accept()
                             {
     if (!ec) {
         // Cria a sessão e inicia. O std::make_shared é vital aqui.
-        std::make_shared<Session>(std::move(socket), storage_, dump_file_)->start();
+        std::make_shared<Session>(std::move(socket), storage_, dump_file_, config_)->start();
     }
     // Chama novamente para continuar aceitando novos clientes
     do_accept(); });
